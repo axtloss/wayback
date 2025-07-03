@@ -31,6 +31,7 @@
 #include <wlr/types/wlr_viewporter.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_shell.h>
+#include <wlr/types/wlr_xdg_output_v1.h>
 #include <wlr/util/log.h>
 #include <xkbcommon/xkbcommon.h>
 
@@ -47,6 +48,8 @@ struct tinywl_server {
 	struct wl_listener new_xdg_toplevel;
 	struct wl_listener new_xdg_popup;
 	struct wl_list toplevels;
+
+	struct wlr_xdg_output_manager_v1 *xdg_output_manager_v1;
 
 	struct wlr_viewporter *viewporter;
 
@@ -729,6 +732,13 @@ static void server_new_xdg_popup(struct wl_listener *listener, void *data) {
 int main(int argc, char *argv[]) {
 	wlr_log_init(WLR_DEBUG, NULL);
 
+	if (argc < 2) {
+		fprintf(stderr, "Usage: %s <socket>\n", argv[0]);
+		exit(EXIT_FAILURE);
+	}
+
+	int wayback_session_socket = atoi(argv[1]);
+
 	struct tinywl_server server = {0};
 	/* The Wayland display is managed by libwayland. It handles accepting
 	 * clients from the Unix socket, manging Wayland globals, and so on. */
@@ -810,6 +820,9 @@ int main(int argc, char *argv[]) {
 	/* Set up viewporter protocol */
 	server.viewporter = wlr_viewporter_create(server.wl_display);
 
+	/* Set up xdg-output protocol */
+	server.xdg_output_manager_v1 = wlr_xdg_output_manager_v1_create(server.wl_display, server.output_layout);
+
 	/*
 	 * Creates a cursor, which is a wlroots utility for tracking the cursor
 	 * image shown on screen.
@@ -883,12 +896,14 @@ int main(int argc, char *argv[]) {
 	 * frame events at the refresh rate, and so on. */
 	wlr_log(WLR_INFO, "Running Wayland compositor on WAYLAND_DISPLAY=%s",
 			socket);
+	write(wayback_session_socket, socket, strlen(socket));
 	wl_display_run(server.wl_display);
 
 	/* Once wl_display_run returns, we destroy all clients then shut down the
 	 * server. */
 	wl_display_destroy_clients(server.wl_display);
 
+	close(wayback_session_socket);
 	wl_list_remove(&server.cursor_motion.link);
 	wl_list_remove(&server.cursor_motion_absolute.link);
 	wl_list_remove(&server.cursor_button.link);
