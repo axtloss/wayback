@@ -16,6 +16,7 @@
 #include <sys/types.h>
 #include <wayland-client.h>
 #include "xdg-output-unstable-v1-client-protocol.h"
+#include <fcntl.h>
 
 struct xwayback {
 	struct wl_display *display;
@@ -185,6 +186,12 @@ void handle_exit(int sig) {
 	}
 }
 
+int set_cloexec(int fd) {
+	int flags = fcntl(fd, F_GETFD);
+	if (flags == -1) return -1;
+	return fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
+}
+
 __attribute__((noreturn)) static void usage(char *binname) {
 	fprintf(stderr, "usage: %s [-d :display]\n", binname);
 	exit(EXIT_SUCCESS);
@@ -223,37 +230,38 @@ int main(int argc, char* argv[]) {
 
 	comp_pid = fork();
 	if (comp_pid == 0) {
-		close(socket[0]);
 		char fd[10];
-		snprintf(fd, sizeof(socket[1]), "%d", socket[1]);
+		snprintf(fd, sizeof(socket[0]), "%d", socket[0]);
 
+		printf("Passed descriptor %s\n", fd);
 		execlp("wayback-compositor", "wayback-compositor", fd, (void *)NULL);
 		fprintf(stderr, "ERROR: failed to launch wayback-compositor\n");
 		exit(EXIT_FAILURE);
 	}
 
-	ssize_t n = read(socket[0], buffer, BUFSIZ-1);
-	while (n == 0) {
-		n = read(socket[0], buffer, BUFSIZ-1);
-	}
-	buffer[n] = '\0';
-	setenv("WAYLAND_DISPLAY", buffer, true);
+	char way_display[1024];
+	snprintf(way_display, sizeof(way_display), "%d", socket[1]);
+	setenv("WAYLAND_SOCKET", way_display, true);
 
-	xwayback->wayland_socket = strdup(buffer);
+	xwayback->wayland_socket = way_display;
 	xwayback->X_display = strdup(x_display);
 
+	usleep (500000);
 	xwayback->display = wl_display_connect(NULL);
 	if (!xwayback->display) {
-		fprintf(stderr, "ERROR: unable to connect to wayback-compositor.\n");
+		fprintf(stdout, "ERROR: unable to connect to wayback-compositor.\n");
 		exit(EXIT_FAILURE);
 	}
-
+	printf("Connected to fd %d\n", socket[1]);
 	wl_list_init(&xwayback->outputs);
 	xwayback->first_output = NULL;
 	struct wl_registry *registry = wl_display_get_registry(xwayback->display);
+	printf("got registry");
 	wl_registry_add_listener(registry, &registry_listener, xwayback);
+	printf("added listener");
 	wl_display_roundtrip(xwayback->display);
 	wl_display_roundtrip(xwayback->display); // xdg-output requires two roundtrips
+	printf("Finished roundtrip");
 
 	xway_pid = fork();
 	if (xway_pid == 0) {

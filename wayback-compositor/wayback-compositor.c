@@ -876,11 +876,14 @@ int main(int argc, char *argv[]) {
 			&server.request_set_selection);
 
 	/* Add a Unix socket to the Wayland display. */
-	const char *socket = wl_display_add_socket_auto(server.wl_display);
-	if (!socket) {
-		wlr_backend_destroy(server.backend);
-		return 1;
+	//const char *socket = wl_display_add_socket_auto(server.wl_display);
+	printf("Using descriptor %d\n", wayback_session_socket);
+	if (wl_display_add_socket_fd(server.wl_display, wayback_session_socket) == -1) {
+		printf("failed to socket\n");
+		exit(EXIT_FAILURE);
 	}
+	printf("Added socket\n");
+
 
 	/* Start the backend. This will enumerate outputs and inputs, become the DRM
 	 * master, etc */
@@ -894,9 +897,9 @@ int main(int argc, char *argv[]) {
 	 * compositor. Starting the backend rigged up all of the necessary event
 	 * loop configuration to listen to libinput events, DRM events, generate
 	 * frame events at the refresh rate, and so on. */
-	wlr_log(WLR_INFO, "Running Wayland compositor on WAYLAND_DISPLAY=%s",
-			socket);
-	write(wayback_session_socket, socket, strlen(socket));
+	//wlr_log(WLR_INFO, "Running Wayland compositor on WAYLAND_DISPLAY=%s",
+//			socket);
+	//write(wayback_session_socket, socket, strlen(socket));
 	wl_display_run(server.wl_display);
 
 	/* Once wl_display_run returns, we destroy all clients then shut down the
